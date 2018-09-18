@@ -1,14 +1,97 @@
 
+import rospy
+from pid import PID
+from lowpass import LowPassFilter
+from yaw_controller import YawController
+
+from math import cos, sin, tan
+import numpy as np
+import tf
+
 GAS_DENSITY = 2.858
 ONE_MPH = 0.44704
 
 
 class Controller(object):
-    def __init__(self, *args, **kwargs):
-        # TODO: Implement
-        pass
+    def __init__(self, vehicle_mass, fuel_capacity, brake_deadband, decel_limit, accel_limit, wheel_radius, wheel_base, steer_ratio, max_lat_accel, max_steer_angle):
+        # TODO: cleanup unused functions, apply PID to velocity
+        self.yaw_controller = YawController(wheel_base, steer_ratio,0.1,max_lat_accel,max_steer_angle)
 
-    def control(self, *args, **kwargs):
-        # TODO: Change the arg, kwarg list to suit your needs
-        # Return throttle, brake, steer
-        return 1., 0., 0.
+        kp = 0.3
+        ki = 0.1
+        kd = 0.
+        mn = 0.
+        mx = 0.2
+        self.throttle_controller = PID(kp, ki, kd, mn, mx)
+
+        self.steer_pid = PID(kp=0.15, ki=0.05, kd=0.5, mn=-max_steer_angle, mx=max_steer_angle)
+
+        tau = 0.5
+        ts = 0.02
+        self.vel_lpf = LowPassFilter(tau, ts)
+
+        self.vehicle_mass = vehicle_mass
+        self.fuel_capacity = fuel_capacity
+        self.brake_deadband = brake_deadband
+        self.decel_limit = decel_limit
+        self.accel_limit = accel_limit
+        self.wheel_radius = wheel_radius
+        self.target_vel = 75*ONE_MPH
+
+        self.last_time = rospy.get_time()
+
+
+
+    def calculate_cte(self, current_pose, waypoints):
+        x_vals = []
+        y_vals = []
+
+        quaternion = (current_pose.pose.orientation.x,current_pose.pose.orientation.y,current_pose.pose.orientation.z,current_pose.pose.orientation.w)
+        _ig1, _ig2, yaw = tf.transformations.euler_from_quaternion(quaternion)
+        originX = current_pose.pose.position.x
+        originY = current_pose.pose.position.y
+
+        for waypoint in waypoints.waypoints:
+
+            shift_x = waypoint.pose.pose.position.x - originX
+            shift_y = waypoint.pose.pose.position.y - originY
+
+            x = shift_x * cos(0 - yaw) - shift_y * sin(0 - yaw)
+            y = shift_x * sin(0 - yaw) + shift_y * cos(0 - yaw)
+
+            x_vals.append(x)
+            y_vals.append(y)
+
+        coefficients = np.polyfit(x_vals, y_vals, 5)
+        cte = np.polyval(coefficients, 5.0)
+        return cte
+
+
+    def control(self, current_pose,current_vel, dbw_enabled, linear_vel, angular_vel, waypoints):
+        # short circuit-exit if controller is disabled:
+        if not dbw_enabled:
+            self.throttle_controller.reset()
+            self.steer_pid.reset()
+            return 0., 0., 0.
+
+        current_time = rospy.get_time()
+        sample_time = current_time - self.last_time
+        self.last_time = current_time
+        cte = self.calculate_cte(current_pose, waypoints)
+        steering = self.steer_pid.step(cte, sample_time)
+
+
+        acceleration = self.target_vel - current_vel / 0.5
+        if acceleration > 0:
+            acceleration = min(self.accel_limit, acceleration)
+        else:
+            acceleration = max(self.decel_limit, acceleration)
+        torque = self.vehicle_mass * acceleration * self.wheel_radius
+        throttle, brake = None, None
+        if torque > 0:
+            throttle, brake = min(1.0, torque / 200.0), 0.0
+        else:
+            throttle, brake = 0.0, min(abs(torque), 20000.0)
+
+
+        return throttle, brake, steering

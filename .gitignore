@@ -6,3 +6,5 @@ devel
 profile.tmp
 
 setup.sh
+.idea/*
+cmake-build-debug/*

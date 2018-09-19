@@ -14,21 +14,8 @@ ONE_MPH = 0.44704
 
 class Controller(object):
     def __init__(self, vehicle_mass, fuel_capacity, brake_deadband, decel_limit, accel_limit, wheel_radius, wheel_base, steer_ratio, max_lat_accel, max_steer_angle):
-        # TODO: cleanup unused functions, apply PID to velocity
-        self.yaw_controller = YawController(wheel_base, steer_ratio,0.1,max_lat_accel,max_steer_angle)
-
-        kp = 0.3
-        ki = 0.1
-        kd = 0.
-        mn = 0.
-        mx = 0.2
-        self.throttle_controller = PID(kp, ki, kd, mn, mx)
 
         self.steer_pid = PID(kp=0.15, ki=0.05, kd=0.5, mn=-max_steer_angle, mx=max_steer_angle)
-
-        tau = 0.5
-        ts = 0.02
-        self.vel_lpf = LowPassFilter(tau, ts)
 
         self.vehicle_mass = vehicle_mass
         self.fuel_capacity = fuel_capacity
@@ -36,7 +23,6 @@ class Controller(object):
         self.decel_limit = decel_limit
         self.accel_limit = accel_limit
         self.wheel_radius = wheel_radius
-        self.target_vel = 75*ONE_MPH
 
         self.last_time = rospy.get_time()
 
@@ -67,7 +53,7 @@ class Controller(object):
         return cte
 
 
-    def control(self, current_pose,current_vel, dbw_enabled, linear_vel, angular_vel, waypoints):
+    def control(self, current_pose,current_vel,target_vel, dbw_enabled, linear_vel, angular_vel, waypoints):
         # short circuit-exit if controller is disabled:
         if not dbw_enabled:
             self.throttle_controller.reset()
@@ -80,18 +66,16 @@ class Controller(object):
         cte = self.calculate_cte(current_pose, waypoints)
         steering = self.steer_pid.step(cte, sample_time)
 
-
-        acceleration = self.target_vel - current_vel / 0.5
+        acceleration = target_vel - current_vel/ONE_MPH
         if acceleration > 0:
             acceleration = min(self.accel_limit, acceleration)
         else:
             acceleration = max(self.decel_limit, acceleration)
         torque = self.vehicle_mass * acceleration * self.wheel_radius
         throttle, brake = None, None
+        # print('Target_vel = {:.2f}\nCurrent_vel = {:.2f}\naccel = {:.2f}\ntorque = {:.2f}\n'.format(target_vel,current_vel/ONE_MPH,acceleration, torque))
         if torque > 0:
             throttle, brake = min(1.0, torque / 200.0), 0.0
         else:
             throttle, brake = 0.0, min(abs(torque), 20000.0)
-
-
         return throttle, brake, steering

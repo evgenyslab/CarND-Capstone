@@ -1,0 +1,6 @@
+<?xml version="1.0"?>
+<launch>
+    <node name="ch1" type="image_view" pkg="image_view" output="screen" args="image:=/tl_debug/ch1"/>
+    <node name="ch2" type="image_view" pkg="image_view" output="screen" args="image:=/tl_debug/ch2"/>
+    <node name="ch3" type="image_view" pkg="image_view" output="screen" args="image:=/tl_debug/ch3"/>
+</launch>

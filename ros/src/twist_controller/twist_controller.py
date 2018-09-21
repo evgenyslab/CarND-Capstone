@@ -56,7 +56,6 @@ class Controller(object):
     def control(self, current_pose,current_vel,target_vel, dbw_enabled, linear_vel, angular_vel, waypoints):
         # short circuit-exit if controller is disabled:
         if not dbw_enabled:
-            self.throttle_controller.reset()
             self.steer_pid.reset()
             return 0., 0., 0.
 

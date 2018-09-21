@@ -36,7 +36,7 @@ class WaypointUpdater(object):
         self.waypoints_2d = None
         self.waypoint_tree = None
         self.light_idx = None
-        self.target_speed = 25 # in mph
+        self.target_speed = 25.755836 # in mph
         self.current_vel = None
 
         self.loop()
